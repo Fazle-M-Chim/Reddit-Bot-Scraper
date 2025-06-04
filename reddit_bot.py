@@ -3,8 +3,10 @@ import os
 import smtplib
 import time
 import json
+import re
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
+import sys
 
 # --------------------- CONFIGURATION ---------------------
 GAMES = [
@@ -34,25 +36,14 @@ EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER")
 def log_status(message):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {message}")
 
-# --------------------- INIT REDDIT ---------------------
-def init_reddit():
-    try:
-        reddit = praw.Reddit(
-            client_id=os.getenv("CLIENT_ID"),
-            client_secret=os.getenv("CLIENT_SECRET"),
-            username=os.getenv("USERNAME"),
-            password=os.getenv("PASSWORD"),
-            user_agent="GameSaleBot v1.0"
-        )
-        # test connection
-        reddit.user.me()
-        log_status("Reddit authentication successful.")
-        return reddit
-    except Exception as e:
-        log_status(f"Error initializing Reddit client: {e}")
-        raise
+def create_regex_pattern(game_name):
+    # Escape special regex chars except apostrophe
+    escaped = re.escape(game_name)
+    # Replace escaped apostrophe \' with regex group allowing apostrophe or nothing
+    pattern = escaped.replace("\\'", "['’]?")
+    # Word boundaries for whole word matching
+    return re.compile(r"\b" + pattern + r"\b", re.IGNORECASE)
 
-# --------------------- SEEN POSTS TRACKER ---------------------
 def load_seen():
     try:
         if not os.path.exists(SEEN_FILE):
@@ -88,7 +79,6 @@ def flush_if_needed(data):
         log_status(f"Error checking flush time: {e}")
         return data
 
-# --------------------- EMAIL SENDER ---------------------
 def send_email(subject, body):
     msg = MIMEText(body)
     msg["Subject"] = subject
@@ -103,8 +93,37 @@ def send_email(subject, body):
     except Exception as e:
         log_status(f"Failed to send email: {e}")
 
-# --------------------- MAIN BOT LOGIC ---------------------
+def init_reddit():
+    try:
+        reddit = praw.Reddit(
+            client_id=os.getenv("CLIENT_ID"),
+            client_secret=os.getenv("CLIENT_SECRET"),
+            username=os.getenv("USERNAME"),
+            password=os.getenv("PASSWORD"),
+            user_agent="GameSaleBot v1.0"
+        )
+        reddit.user.me()
+        log_status("Reddit authentication successful.")
+        return reddit
+    except Exception as e:
+        log_status(f"Error initializing Reddit client: {e}")
+        raise
+
 def main():
+    # Delete seen file on manual run:
+    # Check if script run with 'manual' argument or via env variable
+    manual_run = False
+    if len(sys.argv) > 1 and sys.argv[1].lower() == "manual":
+        manual_run = True
+
+    if manual_run:
+        if os.path.exists(SEEN_FILE):
+            try:
+                os.remove(SEEN_FILE)
+                log_status("Manual run detected - deleted seen posts file.")
+            except Exception as e:
+                log_status(f"Error deleting seen file on manual run: {e}")
+
     try:
         reddit = init_reddit()
     except Exception:
@@ -114,17 +133,23 @@ def main():
     seen_data = load_seen()
     seen_data = flush_if_needed(seen_data)
 
+    # Compile regex patterns for all games once
+    game_patterns = [(game, create_regex_pattern(game)) for game in GAMES]
+
     try:
         subreddit = reddit.subreddit(SUBREDDIT)
         matches = []
 
-        log_status(f"Fetching top {MAX_POSTS_TRACKED} new posts from r/{SUBREDDIT}.")
+        log_status(f"Fetching last {MAX_POSTS_TRACKED} posts from r/{SUBREDDIT}.")
+
         for post in subreddit.new(limit=MAX_POSTS_TRACKED):
-            title = post.title.lower()
             if post.id in seen_data["ids"]:
                 continue
-            for game in GAMES:
-                if game in title:
+
+            content = (post.title + " " + (post.selftext or "")).lower()
+
+            for game, pattern in game_patterns:
+                if pattern.search(content):
                     matches.append((post.title, post.url))
                     seen_data["ids"].append(post.id)
                     if len(seen_data["ids"]) > MAX_POSTS_TRACKED:
@@ -132,8 +157,10 @@ def main():
                     break
 
         if matches:
-            body = "\n\n".join([f"{title}\n{url}" for title, url in matches])
-            send_email("[GameSaleBot] Match Found", body)
+            subject = f"[GameSaleBot] {len(matches)} match(es) found!"
+            body = f"Found {len(matches)} matching post(s):\n\n"
+            body += "\n\n".join([f"{title}\n{url}" for title, url in matches])
+            send_email(subject, body)
             log_status(f"Found {len(matches)} matches. Notification email sent.")
         else:
             log_status("No matches found this run.")
