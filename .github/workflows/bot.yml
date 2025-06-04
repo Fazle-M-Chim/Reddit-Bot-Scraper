@@ -1,4 +1,4 @@
-name: Reddit Bot
+name: Reddit Game Sale Bot
 
 on:
   schedule:
