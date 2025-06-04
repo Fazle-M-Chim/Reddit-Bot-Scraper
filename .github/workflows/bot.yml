@@ -17,6 +17,16 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Delete seen_posts.json for manual runs
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          if [ -f seen_posts.json ]; then
+            rm seen_posts.json
+            echo "seen_posts.json deleted for manual run."
+          else
+            echo "seen_posts.json not found, no deletion needed."
+          fi
+          
       - name: Restore seen_posts.json from cache
         id: cache-seen
         uses: actions/cache@v4
