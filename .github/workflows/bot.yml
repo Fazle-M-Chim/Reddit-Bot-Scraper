@@ -48,3 +48,9 @@ jobs:
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
         run: python reddit_bot.py
+
+      - name: Save seen_posts.json to cache
+        uses: actions/cache/save@v4 # Use the save action
+        with:
+          path: seen_posts.json
+          key: seen-posts-cache
