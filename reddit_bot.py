@@ -10,19 +10,14 @@ import sys
 
 # --------------------- CONFIGURATION ---------------------
 GAMES = [
-    "elden ring", "god of war", "witcher 3",
-    "zelda breath of the wild",
-    "super mario odyssey",
-    "animal crossing new horizons",
-    "mario kart 8 deluxe",
-    "super smash bros ultimate",
-    "splatoon 3",
-    "fire emblem three houses",
+    "breath of the wild",
+    "tears of the kingdom",
+    "pokemon arceus",
     "luigi's mansion 3",
     "pokemon sword",
     "pokemon shield",
-    "paper mario the origami king",
-    "donkey kong country tropical freeze"
+    "paper mario",
+    "mystery dungeon"
 ]
 SUBREDDIT = "GameSale"
 SEEN_FILE = "seen_posts.json"
@@ -166,12 +161,14 @@ def main():
             # Ensure selftext is not None before converting to lower
             content = (post.title + " " + (post.selftext or "")).lower()
 
+            '''
             # --- NEW CONDITION: Check if "switch" is in the post content ---
             if "switch" not in content:
                 # If "switch" is not present, skip this post entirely
                 continue
             # --- END NEW CONDITION ---
-
+            '''
+            
             # Iterate through defined game patterns to find a match
             for game, pattern in game_patterns:
                 if pattern.search(content):
