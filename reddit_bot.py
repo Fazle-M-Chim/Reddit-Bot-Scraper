@@ -21,7 +21,10 @@ GAMES = [
 ]
 SUBREDDIT = "GameSale"
 SEEN_FILE = "seen_posts.json"
-MAX_POSTS_TRACKED = 25
+# Increased MAX_POSTS_TRACKED significantly to retain a much larger history of post IDs.
+# This is crucial for active subreddits to prevent duplicate notifications for posts
+# that might still appear in the 'new' feed over multiple runs.
+MAX_POSTS_TRACKED = 1000
 FLUSH_INTERVAL_DAYS = 2
 
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
@@ -63,7 +66,7 @@ def save_seen(data):
     try:
         with open(SEEN_FILE, "w") as f:
             json.dump(data, f)
-        log_status("Saved seen posts data.")
+        log_status(f"Saved seen posts data with {len(data.get('ids', []))} IDs.")
     except Exception as e:
         log_status(f"Error saving seen posts data: {e}")
 
@@ -150,8 +153,10 @@ def main():
         subreddit = reddit.subreddit(SUBREDDIT)
         matches = []
 
+        # Corrected log message to reflect the actual limit used
         log_status(f"Fetching last {MAX_POSTS_TRACKED} posts from r/{SUBREDDIT}.")
 
+        # Fetch posts up to MAX_POSTS_TRACKED to ensure we cover a wide enough window
         for post in subreddit.new(limit=MAX_POSTS_TRACKED):
             # Skip if the post has already been seen
             if post.id in seen_data["ids"]:
@@ -161,20 +166,21 @@ def main():
             # Ensure selftext is not None before converting to lower
             content = (post.title + " " + (post.selftext or "")).lower()
 
-            '''
-            # --- NEW CONDITION: Check if "switch" is in the post content ---
+            # --- CONDITION: Check if "switch" is in the post content ---
+            # Game matching is only done if the post contains the word "switch"
             if "switch" not in content:
                 # If "switch" is not present, skip this post entirely
                 continue
-            # --- END NEW CONDITION ---
-            '''
+            # --- END CONDITION ---
             
             # Iterate through defined game patterns to find a match
             for game, pattern in game_patterns:
                 if pattern.search(content):
                     matches.append((post.title, post.url))
                     seen_data["ids"].append(post.id)
-                    # Keep the seen_ids list to a manageable size
+                    # Keep the seen_ids list to a manageable size.
+                    # This truncation happens *after* a new ID is added, ensuring the most recent
+                    # MAX_POSTS_TRACKED unique IDs are kept.
                     if len(seen_data["ids"]) > MAX_POSTS_TRACKED:
                         seen_data["ids"] = seen_data["ids"][-MAX_POSTS_TRACKED:]
                     break # Stop checking other games for this post once a match is found
