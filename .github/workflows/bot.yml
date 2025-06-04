@@ -1,8 +1,8 @@
 name: Reddit Game Sale Bot
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"  # runs every 30 minutes
+  #schedule:
+  #  - cron: "*/30 * * * *"  # runs every 30 minutes
   workflow_dispatch:        # allows you to run manually from GitHub
 
 jobs:
