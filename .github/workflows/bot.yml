@@ -1,32 +1,28 @@
-name: Reddit Game Sale Bot
+name: Reddit Bot
 
 on:
   schedule:
-    - cron: "*/30 * * * *"  # runs every 30 minutes
-  workflow_dispatch:        # allows you to run manually from GitHub
+    - cron: '*/30 * * * *'  # every 30 mins, or whatever schedule you want
+  workflow_dispatch:        # enables manual run button
 
 jobs:
-  run:
+  run-bot:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: '3.x'
 
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run bot
-        env:
-          CLIENT_ID: ${{ secrets.CLIENT_ID }}
-          CLIENT_SECRET: ${{ secrets.CLIENT_SECRET }}
-          USERNAME: ${{ secrets.USERNAME }}
-          PASSWORD: ${{ secrets.PASSWORD }}
-          EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
-          EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
-          EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-        run: python reddit_bot.py
+      - name: Run Reddit Bot
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            python reddit_bot.py manual
+          else
+            python reddit_bot.py
+          fi
