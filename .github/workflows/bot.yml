@@ -1,42 +1,47 @@
 name: Reddit Game Sale Bot
 
 on:
-  #schedule:
-  #  - cron: "*/30 * * * *"  # runs every 30 minutes
+  schedule:
+    - cron: "*/30 * * * *"  # runs every 30 minutes
   workflow_dispatch:        # allows you to run manually from GitHub
 
 jobs:
   run:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: write # Required to push commits to the repository
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        # The default GITHUB_TOKEN provided by Actions has permissions to push
+        # to the same repository if the 'permissions' block above is set.
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-          
-      - name: Restore seen_posts.json from cache
-        id: cache-seen
-        uses: actions/cache@v4
-        with:
-          path: seen_posts.json
-          key: seen-posts-cache
-          restore-keys: seen-posts-cache
 
-      - name: Delete seen_posts.json for manual runs
+      # Caching steps for seen_posts.json are removed as we are committing the file.
+
+      - name: Prepare seen_posts.json for manual runs (workflow_dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
-          if [ -f seen_posts.json ]; then
-            rm seen_posts.json
-            echo "seen_posts.json deleted for manual run."
-          else
-            echo "seen_posts.json not found, no deletion needed."
+          echo "Manual (workflow_dispatch) run detected. Resetting seen_posts.json."
+          # Create/overwrite with a fresh, empty seen_posts.json
+          echo '{"last_flushed": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "ids": []}' > seen_posts.json
+          echo "Reset seen_posts.json for manual run."
+
+      - name: Initialize seen_posts.json if it does not exist (e.g., first run or after manual reset)
+        run: |
+          if [ ! -f seen_posts.json ]; then
+            echo "seen_posts.json not found. Creating initial empty file."
+            echo '{"last_flushed": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'", "ids": []}' > seen_posts.json
           fi
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt # Ensure requirements.txt includes praw
 
       - name: Run bot
         env:
@@ -49,8 +54,34 @@ jobs:
           EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
         run: python reddit_bot.py
 
-      - name: Save seen_posts.json to cache
-        uses: actions/cache/save@v4 # Use the save action
-        with:
-          path: seen_posts.json
-          key: seen-posts-cache
+      - name: Commit and push seen_posts.json
+        run: |
+          git config --global user.name 'GitHub Actions Bot'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Check if there are changes in seen_posts.json
+          if ! git diff --quiet seen_posts.json; then
+            echo "seen_posts.json has changed. Committing and pushing..."
+            git add seen_posts.json
+            git commit -m "Update seen_posts.json [skip ci]" -m "Workflow run: ${{ github.run_id }}"
+            
+            # Retry push mechanism
+            for i in 1 2 3; do
+              if git push; then
+                echo "Push successful."
+                break # Exit loop if push succeeds
+              fi
+              if [ "$i" -eq 3 ]; then
+                echo "Failed to push after 3 attempts."
+                exit 1 # Fail the workflow step
+              fi
+              echo "Push failed (attempt $i), retrying in 10 seconds..."
+              sleep 10
+            done
+          else
+            echo "No changes to seen_posts.json to commit."
+          fi
+        env:
+          # GITHUB_TOKEN is automatically available to GitHub Actions.
+          # The 'permissions: contents: write' at the job level grants it push access.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
